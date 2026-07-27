@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { TouchableOpacity, View } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { groupsApi } from '../api/endpoints';
-import { GroupDetail } from '../api/types';
+import { queryKeys } from '../api/queryKeys';
 import { useAuth } from '../auth/AuthContext';
 import { AppText, Avatar, ErrorState, Loading, Screen } from '../components/primitives';
 import { useNavigation, useRoute } from '../nav/navigation';
 import { useTheme } from '../theme/ThemeContext';
 import { rupees } from '../util/format';
-import { useApi } from '../util/useApi';
 
 export default function GroupDetailScreen() {
   const { theme } = useTheme();
@@ -15,15 +15,24 @@ export default function GroupDetailScreen() {
   const { token, user } = useAuth();
   const { params } = useRoute<{ id: string; name: string }>();
   const id = params.id;
-  const { data, loading, error, reload } = useApi<GroupDetail>(
-    () => groupsApi.detail(id, user!.id, token ?? undefined),
-    [id, token, user?.id],
-  );
-  const [tab, setTab] = useState<'balances' | 'expenses'>('balances');
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: queryKeys.group(id),
+    queryFn: () => groupsApi.detail(id, user!.id, token ?? undefined),
+    enabled: !!user,
+  });
+  const errorMessage = error instanceof Error ? error.message : error ? 'Something went wrong' : null;
+
+  const summaryLabel = data
+    ? data.balances.overallOwed > 0
+      ? "You're owed, overall"
+      : data.balances.overallOwed < 0
+        ? 'You owe, overall'
+        : "You're settled up"
+    : '';
 
   return (
     <Screen padded scroll>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 18 }}>
         <TouchableOpacity onPress={nav.goBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <AppText size={22} weight="700" color={theme.textDim}>
             ‹
@@ -34,52 +43,21 @@ export default function GroupDetailScreen() {
         </AppText>
       </View>
 
-      <View style={{ flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 14, padding: 4, marginBottom: 18 }}>
-        {(['balances', 'expenses'] as const).map(t => {
-          const active = tab === t;
-          return (
-            <TouchableOpacity
-              key={t}
-              onPress={() => setTab(t)}
-              style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 11, backgroundColor: active ? theme.teal : 'transparent' }}>
-              <AppText size={13} weight="800" color={active ? theme.onAccent : theme.textDim}>
-                {t === 'balances' ? 'Balances' : 'Expenses'}
-              </AppText>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {isLoading ? <Loading /> : null}
+      {errorMessage ? <ErrorState message={errorMessage} onRetry={refetch} /> : null}
 
-      {loading ? <Loading /> : null}
-      {error ? <ErrorState message={error} onRetry={reload} /> : null}
-
-      {data && tab === 'balances' ? (
+      {data ? (
         <View>
           <View style={{ backgroundColor: theme.tealBg, borderRadius: 18, padding: 18, alignItems: 'center', marginBottom: 16 }}>
             <AppText size={12} weight="800" color={theme.tealText}>
-              You're owed, overall
+              {summaryLabel}
             </AppText>
             <AppText size={30} weight="900" color={theme.teal} style={{ marginTop: 4 }}>
-              {rupees(data.balances.overallOwed)}
+              {rupees(Math.abs(data.balances.overallOwed))}
             </AppText>
           </View>
-          {data.balances.rows.map(b => (
-            <View
-              key={b.id}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Avatar initials={b.initials} bg={b.avatarBg} size={32} />
-                <AppText size={14} weight="700">
-                  {b.label}
-                </AppText>
-              </View>
-              <AppText size={14} weight="900" color={b.direction === 'owed' ? theme.teal : theme.coral}>
-                {rupees(b.amount)}
-              </AppText>
-            </View>
-          ))}
 
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 22 }}>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
             <TouchableOpacity
               onPress={() => nav.push('SettleUp', { id })}
               style={{ flex: 1, backgroundColor: theme.surface, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
@@ -95,11 +73,7 @@ export default function GroupDetailScreen() {
               </AppText>
             </TouchableOpacity>
           </View>
-        </View>
-      ) : null}
 
-      {data && tab === 'expenses' ? (
-        <View>
           <TouchableOpacity
             onPress={() => nav.push('Search', { id })}
             style={{ backgroundColor: theme.surface, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, marginBottom: 6 }}>

@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, TouchableOpacity, View } from 'react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { groupsApi, settlementsApi } from '../api/endpoints';
-import { GroupDetail } from '../api/types';
+import { queryKeys } from '../api/queryKeys';
 import { useAuth } from '../auth/AuthContext';
 import { AppText, Avatar, ErrorState, Header, Loading, PrimaryButton, Screen, SectionLabel } from '../components/primitives';
 import { useNavigation, useRoute } from '../nav/navigation';
 import { useTheme } from '../theme/ThemeContext';
 import { rupees } from '../util/format';
-import { useApi } from '../util/useApi';
 
 export default function SettleUpScreen() {
   const { theme } = useTheme();
@@ -15,12 +15,24 @@ export default function SettleUpScreen() {
   const { token, user } = useAuth();
   const { params } = useRoute<{ id: string }>();
   const groupId = params.id;
-  const { data, loading, error, reload } = useApi<GroupDetail>(
-    () => groupsApi.detail(groupId, user!.id, token ?? undefined),
-    [groupId, token, user?.id],
-  );
+  const queryClient = useQueryClient();
+  const { data, isLoading: loading, error, refetch } = useQuery({
+    queryKey: queryKeys.group(groupId),
+    queryFn: () => groupsApi.detail(groupId, user!.id, token ?? undefined),
+    enabled: !!user,
+  });
+  const errorMessage = error instanceof Error ? error.message : error ? 'Something went wrong' : null;
   const [selected, setSelected] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const recordSettlementMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof settlementsApi.record>[0]) =>
+      settlementsApi.record(payload, token ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
+      queryClient.invalidateQueries({ queryKey: queryKeys.group(groupId) });
+    },
+  });
 
   const rows = useMemo(() => data?.balances.rows ?? [], [data]);
   const active = useMemo(
@@ -36,7 +48,7 @@ export default function SettleUpScreen() {
     }
     try {
       setSaving(true);
-      await settlementsApi.record({ groupId, receiverId: active.id, amount: active.amount }, token ?? undefined);
+      await recordSettlementMutation.mutateAsync({ groupId, receiverId: active.id, amount: active.amount });
       Alert.alert('Payment recorded', `Settled ${rupees(active.amount)} with ${active.label}.`, [
         { text: 'OK', onPress: () => nav.goBack() },
       ]);
@@ -54,7 +66,7 @@ export default function SettleUpScreen() {
       </View>
 
       {loading ? <Loading /> : null}
-      {error ? <ErrorState message={error} onRetry={reload} /> : null}
+      {errorMessage ? <ErrorState message={errorMessage} onRetry={refetch} /> : null}
 
       {data ? (
         <>

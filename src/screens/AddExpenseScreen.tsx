@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, TextInput, TouchableOpacity, View } from 'react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { categoriesApi, expensesApi, groupsApi } from '../api/endpoints';
-import { Category, Member } from '../api/types';
+import { queryKeys } from '../api/queryKeys';
+import { Member } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { AppText, Avatar, Loading, Screen, SectionLabel } from '../components/primitives';
 import { useNavigation, useRoute } from '../nav/navigation';
 import { useTheme } from '../theme/ThemeContext';
-import { useApi } from '../util/useApi';
 
 export default function AddExpenseScreen() {
   const { theme } = useTheme();
@@ -14,12 +15,27 @@ export default function AddExpenseScreen() {
   const { token, user } = useAuth();
   const { params } = useRoute<{ id: string }>();
   const groupId = params.id;
+  const queryClient = useQueryClient();
 
-  const { data: categories } = useApi<Category[]>(() => categoriesApi.list(token ?? undefined), [token]);
-  const { data: members, loading } = useApi<Member[]>(
-    () => groupsApi.members(groupId, user?.id, token ?? undefined),
-    [groupId, user?.id, token],
-  );
+  const { data: categories } = useQuery({
+    queryKey: queryKeys.categories,
+    queryFn: () => categoriesApi.list(token ?? undefined),
+  });
+  const { data: members, isLoading: loading } = useQuery({
+    queryKey: queryKeys.groupMembers(groupId),
+    queryFn: () => groupsApi.members(groupId, user?.id, token ?? undefined),
+  });
+
+  function invalidateGroup() {
+    queryClient.invalidateQueries({ queryKey: queryKeys.groups });
+    // Prefix match also covers ['group', groupId, 'suggestions', meId].
+    queryClient.invalidateQueries({ queryKey: queryKeys.group(groupId) });
+  }
+
+  const createExpenseMutation = useMutation({
+    mutationFn: (input: Parameters<typeof expensesApi.create>[0]) => expensesApi.create(input, token ?? undefined),
+    onSuccess: invalidateGroup,
+  });
 
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -66,18 +82,15 @@ export default function AddExpenseScreen() {
     }
     try {
       setSaving(true);
-      await expensesApi.create(
-        {
-          groupId,
-          description,
-          amount: Number(amount) || 0,
-          categoryId: categoryId || undefined,
-          paidBy,
-          splitType: 'EQUAL',
-          participants: (members ?? []).filter(m => participantChecks[m.id]).map(m => ({ userId: m.id })),
-        },
-        token ?? undefined,
-      );
+      await createExpenseMutation.mutateAsync({
+        groupId,
+        description,
+        amount: Number(amount) || 0,
+        categoryId: categoryId || undefined,
+        paidBy,
+        splitType: 'EQUAL',
+        participants: (members ?? []).filter(m => participantChecks[m.id]).map(m => ({ userId: m.id })),
+      });
       Alert.alert('Saved', 'Expense added to the group.', [
         { text: 'OK', onPress: () => nav.goBack() },
       ]);

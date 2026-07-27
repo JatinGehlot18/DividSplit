@@ -4,10 +4,11 @@ export type Member = {
   first: string;
   initials: string;
   avatarBg: string;
+  email: string;
   isMe?: boolean;
 };
 
-export type User = Member & { email: string; profilePictureUrl?: string };
+export type User = Member & { profilePictureUrl?: string };
 
 /** Raw shape returned by GET/PUT /api/users (Swagger: UserSummary). */
 export type UserSummary = {

@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, TextInput, View } from 'react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { expensesApi, groupsApi } from '../api/endpoints';
-import { Member } from '../api/types';
+import { queryKeys } from '../api/queryKeys';
 import { useAuth } from '../auth/AuthContext';
 import { AppText, Avatar, Header, Loading, PrimaryButton, Screen } from '../components/primitives';
 import { useNavigation, useRoute } from '../nav/navigation';
 import { useTheme } from '../theme/ThemeContext';
 import { rupees } from '../util/format';
-import { useApi } from '../util/useApi';
 
 export default function SplitUnevenScreen() {
   const { theme } = useTheme();
@@ -22,13 +22,22 @@ export default function SplitUnevenScreen() {
   }>();
   const total = Number(params.amount) || 0;
   const description = params.description ?? '';
+  const queryClient = useQueryClient();
 
-  const { data: members, loading } = useApi<Member[]>(
-    () => groupsApi.members(params.id, user?.id, token ?? undefined),
-    [params.id, user?.id, token],
-  );
+  const { data: members, isLoading: loading } = useQuery({
+    queryKey: queryKeys.groupMembers(params.id),
+    queryFn: () => groupsApi.members(params.id, user?.id, token ?? undefined),
+  });
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+
+  const createExpenseMutation = useMutation({
+    mutationFn: (input: Parameters<typeof expensesApi.create>[0]) => expensesApi.create(input, token ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
+      queryClient.invalidateQueries({ queryKey: queryKeys.group(params.id) });
+    },
+  });
 
   const assigned = useMemo(
     () => Object.values(amounts).reduce((sum, v) => sum + (Number(v) || 0), 0),
@@ -43,20 +52,17 @@ export default function SplitUnevenScreen() {
     }
     try {
       setSaving(true);
-      await expensesApi.create(
-        {
-          groupId: params.id,
-          description,
-          amount: total,
-          categoryId: params.categoryId || undefined,
-          paidBy: params.paidBy || user?.id,
-          splitType: 'EXACT',
-          participants: Object.entries(amounts)
-            .filter(([, v]) => Number(v) > 0)
-            .map(([userId, v]) => ({ userId, value: Number(v) })),
-        },
-        token ?? undefined,
-      );
+      await createExpenseMutation.mutateAsync({
+        groupId: params.id,
+        description,
+        amount: total,
+        categoryId: params.categoryId || undefined,
+        paidBy: params.paidBy || user?.id,
+        splitType: 'EXACT',
+        participants: Object.entries(amounts)
+          .filter(([, v]) => Number(v) > 0)
+          .map(([userId, v]) => ({ userId, value: Number(v) })),
+      });
       Alert.alert('Saved', 'Split saved.', [{ text: 'OK', onPress: () => nav.reset('Groups') }]);
     } catch (e) {
       Alert.alert('Could not save', e instanceof Error ? e.message : 'Check that the API is running.');

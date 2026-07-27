@@ -3,6 +3,7 @@ import { configureAuthClient } from '../api/client';
 import { profileApi, toUser } from '../api/endpoints';
 import { resetTo } from '../nav/navigation';
 import { User } from '../api/types';
+import { queryClient } from '../query/queryClient';
 import { clearSession, loadSession, saveSession } from './sessionStorage';
 
 type AuthContextValue = {
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRefreshToken(null);
         setUser(null);
         clearSession();
+        queryClient.clear();
         resetTo('Login');
       },
     });
@@ -93,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRefreshToken(null);
         setUser(null);
         clearSession();
+        queryClient.clear();
       },
     }),
     [token, refreshToken, user, isRestoring],

@@ -26,6 +26,7 @@ export type RootStackParamList = {
   ScanCode: undefined;
   GroupDetail: { id: string; name: string };
   CreateGroup: undefined;
+  InviteMembers: { id: string; name: string };
   AddExpense: { id: string };
   SplitUneven: {
     id: string;

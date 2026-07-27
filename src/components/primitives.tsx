@@ -1,6 +1,8 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -42,20 +44,30 @@ export function Screen({
         backgroundColor="transparent"
         translucent
       />
-      {scroll ? (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={[topInset, bottomInset, pad, contentStyle]}
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets
-          showsVerticalScrollIndicator={false}>
-          {children}
-        </ScrollView>
-      ) : (
-        <View style={[{ flex: 1 }, topInset, bottomInset, pad, contentStyle]}>
-          {children}
-        </View>
-      )}
+      {/*
+        Android: edge-to-edge + translucent StatusBar makes windowSoftInputMode="adjustResize"
+        unreliable on API 35+ (the window no longer truly resizes), so a focused field near the
+        bottom stays hidden behind the keyboard unless we push content up ourselves.
+        iOS: handled by the ScrollView's own automaticallyAdjustKeyboardInsets below.
+      */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'android' ? 'height' : undefined}>
+        {scroll ? (
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={[topInset, bottomInset, pad, contentStyle]}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            showsVerticalScrollIndicator={false}>
+            {children}
+          </ScrollView>
+        ) : (
+          <View style={[{ flex: 1 }, topInset, bottomInset, pad, contentStyle]}>
+            {children}
+          </View>
+        )}
+      </KeyboardAvoidingView>
     </View>
   );
 }

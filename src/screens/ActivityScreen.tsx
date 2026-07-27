@@ -1,41 +1,48 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../api/endpoints';
+import { queryKeys } from '../api/queryKeys';
 import { ActivityItem } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { AppText, ErrorState, Loading, Screen } from '../components/primitives';
 import { useTheme } from '../theme/ThemeContext';
-import { useApi } from '../util/useApi';
 
 export default function ActivityScreen() {
   const { theme } = useTheme();
   const { user, token } = useAuth();
   const userId = user?.id ?? '';
+  const queryClient = useQueryClient();
+  const notificationsKey = queryKeys.notifications(userId);
 
-  const { data, loading, error, reload } = useApi<ActivityItem[]>(
-    () => notificationsApi.list(userId, token ?? undefined),
-    [userId, token],
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: notificationsKey,
+    queryFn: () => notificationsApi.list(userId, token ?? undefined),
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: notificationsKey });
+    }, [queryClient, notificationsKey]),
   );
 
+  const markReadMutation = useMutation({
+    mutationFn: (item: ActivityItem) => notificationsApi.markRead(userId, item.id, token ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: notificationsKey }),
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => notificationsApi.markAllRead(userId, token ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: notificationsKey }),
+  });
+
   const hasUnread = (data ?? []).some(n => !n.read);
+  const errorMessage = error instanceof Error ? error.message : error ? 'Something went wrong' : null;
 
-  async function markRead(item: ActivityItem) {
+  function markRead(item: ActivityItem) {
     if (item.read) return;
-    try {
-      await notificationsApi.markRead(userId, item.id, token ?? undefined);
-      reload();
-    } catch {
-      // non-critical — leave as unread on failure
-    }
-  }
-
-  async function markAllRead() {
-    try {
-      await notificationsApi.markAllRead(userId, token ?? undefined);
-      reload();
-    } catch {
-      // non-critical
-    }
+    markReadMutation.mutate(item);
   }
 
   return (
@@ -45,7 +52,7 @@ export default function ActivityScreen() {
           Activity
         </AppText>
         {hasUnread ? (
-          <TouchableOpacity onPress={markAllRead}>
+          <TouchableOpacity onPress={() => markAllReadMutation.mutate()}>
             <AppText size={12} weight="800" color={theme.teal}>
               Mark all read
             </AppText>
@@ -53,8 +60,8 @@ export default function ActivityScreen() {
         ) : null}
       </View>
 
-      {loading ? <Loading /> : null}
-      {error ? <ErrorState message={error} onRetry={reload} /> : null}
+      {isLoading ? <Loading /> : null}
+      {errorMessage ? <ErrorState message={errorMessage} onRetry={refetch} /> : null}
 
       {data && data.length === 0 ? (
         <AppText size={13} weight="600" color={theme.textFaint} style={{ textAlign: 'center', paddingVertical: 40 }}>

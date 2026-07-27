@@ -6,37 +6,35 @@
  * the mock API server in /server (static JSON responses).
  */
 
-import React from 'react';
-import { View } from 'react-native';
+import React, { useEffect } from 'react';
+import { AppState, AppStateStatus, Platform, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { Loading } from './src/components/primitives';
 import { RootStackParamList, TabParamList } from './src/nav/navigation';
 import { navigationRef } from './src/nav/navigationRef';
+import { rootScreens } from './src/nav/screens';
 import { TabBar } from './src/nav/TabBar';
+import { queryClient } from './src/query/queryClient';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 
-import LoginScreen from './src/screens/LoginScreen';
-import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
 import ActivityScreen from './src/screens/ActivityScreen';
 import AccountScreen from './src/screens/AccountScreen';
-import ScanCodeScreen from './src/screens/ScanCodeScreen';
-import GroupDetailScreen from './src/screens/GroupDetailScreen';
-import CreateGroupScreen from './src/screens/CreateGroupScreen';
-import AddExpenseScreen from './src/screens/AddExpenseScreen';
-import SplitUnevenScreen from './src/screens/SplitUnevenScreen';
-import ExpenseDetailScreen from './src/screens/ExpenseDetailScreen';
-import SettleUpScreen from './src/screens/SettleUpScreen';
-import SearchScreen from './src/screens/SearchScreen';
-import ScanReceiptScreen from './src/screens/ScanReceiptScreen';
-import ScanReviewScreen from './src/screens/ScanReviewScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+/** React Query only knows "focused" via this listener — without it, RN never refetches on app foreground. */
+function onAppStateChange(status: AppStateStatus) {
+  if (Platform.OS !== 'web') {
+    focusManager.setFocused(status === 'active');
+  }
+}
 const Tab = createBottomTabNavigator<TabParamList>();
 
 function Tabs() {
@@ -70,32 +68,30 @@ function RootNavigator() {
   return (
     <NavigationContainer ref={navigationRef}>
       <Stack.Navigator initialRouteName={token ? 'Tabs' : 'Login'} screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Tabs" component={Tabs} />
-        <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
-        <Stack.Screen name="ScanCode" component={ScanCodeScreen} />
-        <Stack.Screen name="GroupDetail" component={GroupDetailScreen} />
-        <Stack.Screen name="CreateGroup" component={CreateGroupScreen} />
-        <Stack.Screen name="AddExpense" component={AddExpenseScreen} />
-        <Stack.Screen name="SplitUneven" component={SplitUnevenScreen} />
-        <Stack.Screen name="ExpenseDetail" component={ExpenseDetailScreen} />
-        <Stack.Screen name="SettleUp" component={SettleUpScreen} />
-        <Stack.Screen name="Search" component={SearchScreen} />
-        <Stack.Screen name="ScanReceipt" component={ScanReceiptScreen} />
-        <Stack.Screen name="ScanReview" component={ScanReviewScreen} />
+        {(Object.keys(rootScreens) as (keyof typeof rootScreens)[]).map(name => (
+          <Stack.Screen key={name} name={name} component={rootScreens[name]} />
+        ))}
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
 
 function App() {
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', onAppStateChange);
+    return () => subscription.remove();
+  }, []);
+
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <AuthProvider>
-          <RootNavigator />
-        </AuthProvider>
-      </ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <RootNavigator />
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
     </SafeAreaProvider>
   );
 }

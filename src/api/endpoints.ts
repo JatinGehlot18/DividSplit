@@ -27,13 +27,14 @@ function memberFrom(summary: UserSummary, meId?: string): Member {
     first: summary.displayName.split(/\s+/)[0] ?? summary.displayName,
     initials: initialsOf(summary.displayName),
     avatarBg: avatarColorFor(summary.id),
+    email: summary.email,
     isMe: meId ? summary.id === meId : undefined,
   };
 }
 
 /** Maps the backend's UserSummary onto the signed-in User (Member + email). */
 export function toUser(summary: UserSummary): User {
-  return { ...memberFrom(summary), email: summary.email, profilePictureUrl: summary.profilePictureUrl, isMe: true };
+  return { ...memberFrom(summary), profilePictureUrl: summary.profilePictureUrl, isMe: true };
 }
 
 export const authApi = {
@@ -138,6 +139,24 @@ function toExpenseListItem(e: GqlExpense): Expense {
   };
 }
 
+/** Shared by groupsApi.detail (full group view) and groupsApi.suggestionsBatch (Groups list breakdown lines). */
+function toBalanceRows(suggestions: { from: GqlUser; to: GqlUser; amount: number }[], meId: string): BalanceRow[] {
+  return suggestions
+    .filter(s => s.from.id === meId || s.to.id === meId)
+    .map(s => {
+      const mine = s.from.id === meId;
+      const counterpart = memberFrom(mine ? s.to : s.from);
+      return {
+        id: counterpart.id,
+        label: counterpart.name,
+        initials: counterpart.initials,
+        avatarBg: counterpart.avatarBg,
+        direction: mine ? 'owe' : 'owed',
+        amount: Number(s.amount),
+      };
+    });
+}
+
 export const groupsApi = {
   list: (token?: string) =>
     graphql<{ myGroups: GqlGroup[] }>(`query { myGroups { ${GROUP_FIELDS} } }`, undefined, token).then(d =>
@@ -158,29 +177,43 @@ export const groupsApi = {
       suggestions: { from: GqlUser; to: GqlUser; amount: number }[];
     }>(query, { id }, token);
 
-    // group.netBalance is already "my" net position in this group — groupBalances
-    // omits the caller from its own results, so it can't be used for this figure.
-    const rows: BalanceRow[] = d.suggestions
-      .filter(s => s.from.id === meId || s.to.id === meId)
-      .map(s => {
-        const mine = s.from.id === meId;
-        const counterpart = memberFrom(mine ? s.to : s.from);
-        return {
-          id: counterpart.id,
-          label: counterpart.name,
-          initials: counterpart.initials,
-          avatarBg: counterpart.avatarBg,
-          direction: mine ? 'owe' : 'owed',
-          amount: Number(s.amount),
-        };
-      });
-
     return {
       ...toGroup(d.group),
       members: d.group.members.map(m => memberFrom(m, meId)),
-      balances: { overallOwed: Number(d.group.netBalance), rows },
+      // group.netBalance is already "my" net position in this group — groupBalances
+      // omits the caller from its own results, so it can't be used for this figure.
+      balances: { overallOwed: Number(d.group.netBalance), rows: toBalanceRows(d.suggestions, meId) },
       expenses: d.expenses.map(toExpenseListItem),
     };
+  },
+
+  /**
+   * Per-counterparty "you owe X / X owes you" lines for every given group, shown on the Groups
+   * list. One aliased GraphQL request for all groups instead of one request per group — GraphQL
+   * lets a single query ask for N differently-parameterized fields at once via aliases, so this
+   * avoids an N+1 round-trip fan-out on a slow backend.
+   */
+  suggestionsBatch: (groupIds: string[], meId: string, token?: string): Promise<Record<string, BalanceRow[]>> => {
+    if (groupIds.length === 0) return Promise.resolve({});
+    const varDefs = groupIds.map((_, i) => `$id${i}: ID!`).join(', ');
+    const fields = groupIds
+      .map(
+        (_, i) =>
+          `g${i}: groupSettleSuggestions(groupId: $id${i}) { from { ${USER_FIELDS} } to { ${USER_FIELDS} } amount }`,
+      )
+      .join('\n');
+    const variables = Object.fromEntries(groupIds.map((id, i) => [`id${i}`, id]));
+    return graphql<Record<string, { from: GqlUser; to: GqlUser; amount: number }[]>>(
+      `query(${varDefs}) { ${fields} }`,
+      variables,
+      token,
+    ).then(d => {
+      const out: Record<string, BalanceRow[]> = {};
+      groupIds.forEach((id, i) => {
+        out[id] = toBalanceRows(d[`g${i}`] ?? [], meId);
+      });
+      return out;
+    });
   },
 
   /** Group members, for participant pickers (add expense / split unevenly). */
@@ -199,23 +232,15 @@ export const groupsApi = {
     ).then(d => ({ id, favorite: d.setGroupFavorite.favorite })),
 
   create: async (
-    payload: { name: string; color: string; invitedEmails: string[] },
+    payload: { name: string; color: string; emoji: string },
     token?: string,
-  ): Promise<{ group: Group; failedInvites: string[] }> => {
+  ): Promise<{ group: Group }> => {
     const d = await graphql<{ createGroup: GqlGroup }>(
       `mutation($input: CreateGroupInput!) { createGroup(input: $input) { ${GROUP_FIELDS} } }`,
-      { input: { name: payload.name, color: payload.color } },
+      { input: { name: payload.name, color: payload.color, emoji: payload.emoji } },
       token,
     );
-    const failedInvites: string[] = [];
-    for (const email of payload.invitedEmails) {
-      try {
-        await groupsApi.addMember(d.createGroup.id, email, token);
-      } catch {
-        failedInvites.push(email);
-      }
-    }
-    return { group: toGroup(d.createGroup), failedInvites };
+    return { group: toGroup(d.createGroup) };
   },
 
   addMember: (groupId: string, email: string, token?: string) =>
@@ -224,6 +249,18 @@ export const groupsApi = {
       { id: groupId, email },
       token,
     ),
+
+  /**
+   * Generates a shareable join link for the group (Copy link / WhatsApp on the
+   * post-create invite step). Requires the `createGroupInviteLink` mutation —
+   * see INVITE_LINK_SPEC.txt in the backend repo for the server-side piece.
+   */
+  createInviteLink: (groupId: string, token?: string) =>
+    graphql<{ createGroupInviteLink: { token: string; expiresAt: string } }>(
+      `mutation($id: ID!) { createGroupInviteLink(groupId: $id) { token expiresAt } }`,
+      { id: groupId },
+      token,
+    ).then(d => d.createGroupInviteLink),
 
   /** No server-side search endpoint — filters the group's expenses client-side. */
   search: async (groupId: string, q: string, token?: string) => {

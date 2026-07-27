@@ -1,44 +1,148 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { TextInput, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { groupsApi } from '../api/endpoints';
+import { queryKeys } from '../api/queryKeys';
 import { Group } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { AppText, Avatar, ErrorState, Loading, Screen } from '../components/primitives';
 import { useNavigation } from '../nav/navigation';
 import { useTheme } from '../theme/ThemeContext';
 import { rupees } from '../util/format';
-import { useApi } from '../util/useApi';
 
 export default function GroupsScreen() {
   const { theme, toggle, isDark } = useTheme();
   const nav = useNavigation();
-  const { token } = useAuth();
-  const { data, loading, error, reload } = useApi<Group[]>(() => groupsApi.list(token ?? undefined), [token]);
-  const [query, setQuery] = useState('');
-  const [favOverrides, setFavOverrides] = useState<Record<string, boolean>>({});
+  const { token, user } = useAuth();
+  const queryClient = useQueryClient();
+  const groupsKey = useMemo(() => [...queryKeys.groups, token] as const, [token]);
 
-  const groups = useMemo(() => {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: groupsKey,
+    queryFn: () => groupsApi.list(token ?? undefined),
+  });
+  const [query, setQuery] = useState('');
+  const [showSettled, setShowSettled] = useState(false);
+
+  // GroupsScreen lives inside the bottom-tab navigator and stays mounted while
+  // other stack screens (CreateGroup, InviteMembers, GroupDetail) are pushed on
+  // top, so a mount-only fetch never reruns when a new group is created
+  // elsewhere and we navigate back here — invalidate on focus instead.
+  useFocusEffect(
+    useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
+      queryClient.invalidateQueries({ queryKey: ['group'] });
+    }, [queryClient]),
+  );
+
+  const activeGroupIds = useMemo(
+    () =>
+      (data ?? [])
+        .filter(g => g.net !== 0)
+        .map(g => g.id)
+        .sort(),
+    [data],
+  );
+
+  // Per-counterparty breakdown lines (e.g. "You owe Anand ₹120") shown under each
+  // group. One aliased GraphQL request for all active groups instead of one
+  // request per group (see groupsApi.suggestionsBatch) — avoids an N+1 fan-out.
+  const { data: breakdowns = {} } = useQuery({
+    queryKey: queryKeys.groupSuggestionsBatch(activeGroupIds, user?.id ?? ''),
+    queryFn: () => groupsApi.suggestionsBatch(activeGroupIds, user!.id, token ?? undefined),
+    enabled: !!user && activeGroupIds.length > 0,
+  });
+
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: (g: Group) => groupsApi.toggleFavorite(g.id, !g.favorite, token ?? undefined),
+    onMutate: async g => {
+      await queryClient.cancelQueries({ queryKey: groupsKey });
+      const previous = queryClient.getQueryData<Group[]>(groupsKey);
+      queryClient.setQueryData<Group[]>(groupsKey, old =>
+        old?.map(x => (x.id === g.id ? { ...x, favorite: !x.favorite } : x)),
+      );
+      return { previous };
+    },
+    onError: (_err, _g, context) => {
+      if (context?.previous) queryClient.setQueryData(groupsKey, context.previous);
+    },
+  });
+
+  const { activeGroups, settledGroups, overall } = useMemo(() => {
     const list = data ?? [];
     const q = query.trim().toLowerCase();
-    return q ? list.filter(g => g.name.toLowerCase().includes(q)) : list;
+    const filtered = q ? list.filter(g => g.name.toLowerCase().includes(q)) : list;
+    return {
+      activeGroups: filtered.filter(g => g.net !== 0),
+      settledGroups: filtered.filter(g => g.net === 0),
+      overall: list.reduce((sum, g) => sum + g.net, 0),
+    };
   }, [data, query]);
-
-  async function toggleFav(g: Group) {
-    const next = !(favOverrides[g.id] ?? g.favorite);
-    setFavOverrides(o => ({ ...o, [g.id]: next }));
-    try {
-      await groupsApi.toggleFavorite(g.id, next, token ?? undefined);
-    } catch {
-      // revert on failure
-      setFavOverrides(o => ({ ...o, [g.id]: g.favorite }));
-    }
-  }
 
   function balanceParts(net: number) {
     if (net > 0) return { label: 'you are owed', display: rupees(net), color: theme.teal };
     if (net < 0) return { label: 'you owe', display: rupees(net).replace('-', ''), color: theme.coral };
     return { label: '', display: 'settled up', color: theme.textFaint };
   }
+
+  function renderGroup(g: Group) {
+    const b = balanceParts(g.net);
+    const rows = breakdowns[g.id] ?? [];
+    return (
+      <TouchableOpacity
+        key={g.id}
+        activeOpacity={0.85}
+        onPress={() => nav.push('GroupDetail', { id: g.id, name: g.name })}
+        style={{ backgroundColor: theme.surface, borderRadius: 20, padding: 18, marginBottom: 14 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Avatar initials={g.emoji} bg={g.tint} size={44} radius={14} textSize={15} />
+            <View>
+              <AppText size={15} weight="700">
+                {g.name}
+              </AppText>
+              <AppText size={12} weight="600" color={theme.textFaint} style={{ marginTop: 2 }}>
+                {g.memberLabel}
+              </AppText>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={() => toggleFavoriteMutation.mutate(g)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <AppText size={17} weight="700" color={g.favorite ? theme.teal : theme.starOff}>
+              {g.favorite ? '★' : '☆'}
+            </AppText>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: rows.length ? 10 : 0 }}>
+          {b.label ? (
+            <AppText size={12} weight="600" color={theme.textFaint}>
+              {b.label}
+            </AppText>
+          ) : null}
+          <AppText size={16} weight="800" color={b.color}>
+            {b.display}
+          </AppText>
+        </View>
+
+        {rows.map(r => (
+          <View key={r.id} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+            <AppText size={12} weight="600" color={theme.textFaint}>
+              {r.direction === 'owe' ? `You owe ${r.label}` : `${r.label} owes you`}
+            </AppText>
+            <AppText size={12} weight="800" color={r.direction === 'owe' ? theme.coral : theme.teal}>
+              {rupees(r.amount)}
+            </AppText>
+          </View>
+        ))}
+      </TouchableOpacity>
+    );
+  }
+
+  const overallParts = balanceParts(overall);
+  const errorMessage = error instanceof Error ? error.message : error ? 'Something went wrong' : null;
 
   return (
     <Screen padded scroll>
@@ -72,49 +176,37 @@ export default function GroupsScreen() {
         />
       </View>
 
-      {loading ? <Loading /> : null}
-      {error ? <ErrorState message={error} onRetry={reload} /> : null}
+      {data && data.length ? (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 20 }}>
+          <AppText size={13} weight="700" color={theme.textDim}>
+            {overallParts.label ? `Overall, ${overallParts.label}` : 'Overall, you’re all settled up'}
+          </AppText>
+          {overallParts.label ? (
+            <AppText size={17} weight="900" color={overallParts.color}>
+              {overallParts.display}
+            </AppText>
+          ) : null}
+        </View>
+      ) : null}
 
-      {groups.map(g => {
-        const fav = favOverrides[g.id] ?? g.favorite;
-        const b = balanceParts(g.net);
-        return (
+      {isLoading ? <Loading /> : null}
+      {errorMessage ? <ErrorState message={errorMessage} onRetry={refetch} /> : null}
+
+      {activeGroups.map(renderGroup)}
+
+      {settledGroups.length ? (
+        showSettled ? (
+          settledGroups.map(renderGroup)
+        ) : (
           <TouchableOpacity
-            key={g.id}
-            activeOpacity={0.85}
-            onPress={() => nav.push('GroupDetail', { id: g.id, name: g.name })}
-            style={{ backgroundColor: theme.surface, borderRadius: 20, padding: 18, marginBottom: 14 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Avatar initials={g.emoji} bg={g.tint} size={44} radius={14} textSize={15} />
-                <View>
-                  <AppText size={15} weight="700">
-                    {g.name}
-                  </AppText>
-                  <AppText size={12} weight="600" color={theme.textFaint} style={{ marginTop: 2 }}>
-                    {g.memberLabel}
-                  </AppText>
-                </View>
-              </View>
-              <TouchableOpacity onPress={() => toggleFav(g)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <AppText size={17} weight="700" color={fav ? theme.teal : theme.starOff}>
-                  {fav ? '★' : '☆'}
-                </AppText>
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-              {b.label ? (
-                <AppText size={12} weight="600" color={theme.textFaint}>
-                  {b.label}
-                </AppText>
-              ) : null}
-              <AppText size={16} weight="800" color={b.color}>
-                {b.display}
-              </AppText>
-            </View>
+            onPress={() => setShowSettled(true)}
+            style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 16, paddingVertical: 13, alignItems: 'center', marginTop: 4 }}>
+            <AppText size={13} weight="800" color={theme.teal}>
+              Show {settledGroups.length} settled-up group{settledGroups.length === 1 ? '' : 's'}
+            </AppText>
           </TouchableOpacity>
-        );
-      })}
+        )
+      ) : null}
     </Screen>
   );
 }

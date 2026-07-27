@@ -1,23 +1,24 @@
 import React from 'react';
 import { TouchableOpacity, View } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { groupsApi } from '../api/endpoints';
-import { ExpenseDetail } from '../api/types';
+import { queryKeys } from '../api/queryKeys';
 import { useAuth } from '../auth/AuthContext';
 import { AppText, Avatar, ErrorState, Loading, Screen } from '../components/primitives';
 import { useNavigation, useRoute } from '../nav/navigation';
 import { useTheme } from '../theme/ThemeContext';
 import { rupees } from '../util/format';
-import { useApi } from '../util/useApi';
 
 export default function ExpenseDetailScreen() {
   const { theme } = useTheme();
   const nav = useNavigation();
   const { token } = useAuth();
   const { params } = useRoute<{ groupId: string; expenseId: string }>();
-  const { data, loading, error, reload } = useApi<ExpenseDetail>(
-    () => groupsApi.expenseDetail(params.expenseId, token ?? undefined),
-    [params.expenseId, token],
-  );
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: queryKeys.expense(params.expenseId),
+    queryFn: () => groupsApi.expenseDetail(params.expenseId, token ?? undefined),
+  });
+  const errorMessage = error instanceof Error ? error.message : error ? 'Something went wrong' : null;
 
   return (
     <Screen padded scroll>
@@ -32,8 +33,8 @@ export default function ExpenseDetailScreen() {
         </AppText>
       </View>
 
-      {loading ? <Loading /> : null}
-      {error ? <ErrorState message={error} onRetry={reload} /> : null}
+      {isLoading ? <Loading /> : null}
+      {errorMessage ? <ErrorState message={errorMessage} onRetry={refetch} /> : null}
 
       {data ? (
         <>
