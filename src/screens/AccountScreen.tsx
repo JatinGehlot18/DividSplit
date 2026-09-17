@@ -76,14 +76,17 @@ export default function AccountScreen() {
   }
 
   async function logOut() {
+    // Clear local state and leave the session screen FIRST — the server call
+    // below can hang when the backend is unreachable (no fetch timeout), and
+    // blocking on it would keep the stale session active indefinitely.
+    signOut();
+    nav.reset('Login');
     try {
       if (refreshToken) await authApi.logout(refreshToken);
     } catch {
-      // best-effort — still sign out locally either way
+      // best-effort — still signed out locally either way
     }
     await signOutOfGoogle();
-    signOut();
-    nav.reset('Login');
   }
 
   return (

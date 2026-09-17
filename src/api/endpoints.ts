@@ -97,6 +97,13 @@ type GqlExpense = {
   category: GqlCategory | null;
   splits?: { user: GqlUser; amountOwed: number }[];
 };
+type GroupInviteLink = {
+  token: string;
+  groupId: string;
+  expiresAt: string;
+  link: string;
+  deepLink: string;
+};
 
 const USER_FIELDS = 'id email displayName profilePictureUrl';
 const GROUP_FIELDS = `id name description color emoji favorite netBalance members { ${USER_FIELDS} }`;
@@ -224,6 +231,22 @@ export const groupsApi = {
       { id: groupId, email },
       token,
     ),
+
+  /** Creates (or reuses an unexpired) generic shareable join link for the group. */
+  createInviteLink: (groupId: string, token?: string): Promise<GroupInviteLink> =>
+    graphql<{ createGroupInviteLink: GroupInviteLink }>(
+      `mutation($id: ID!) { createGroupInviteLink(groupId: $id) { token groupId expiresAt link deepLink } }`,
+      { id: groupId },
+      token,
+    ).then(d => d.createGroupInviteLink),
+
+  /** Joins the signed-in user to the group the invite token belongs to. */
+  joinByInviteToken: (token: string, tokenAuth?: string): Promise<GqlGroup> =>
+    graphql<{ joinGroupByInviteToken: GqlGroup }>(
+      `mutation($token: String!) { joinGroupByInviteToken(token: $token) { ${GROUP_FIELDS} } }`,
+      { token },
+      tokenAuth,
+    ).then(d => d.joinGroupByInviteToken),
 
   /** No server-side search endpoint — filters the group's expenses client-side. */
   search: async (groupId: string, q: string, token?: string) => {
