@@ -71,6 +71,7 @@ jobs:
           files: |
             android/app/build/outputs/bundle/release/app-release.aab
             android/app/build/outputs/apk/release/app-release.apk
+          overwrite: true
 
       # Once fastlane/Fastfile's upload_to_play_store is wired with a real
       # PLAY_STORE_JSON_KEY secret (see fastlane/Appfile) and the release
