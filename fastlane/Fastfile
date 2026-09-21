@@ -37,7 +37,7 @@ platform :ios do
   desc "Build a staging release and push it to TestFlight / Firebase App Distribution"
   lane :staging do
     ENV["ENVFILE"] = ".env.staging"
-    build_app(scheme: "Splitkaro", export_method: "app-store")
+    build_app(scheme: "DividSplit", export_method: "app-store")
     # TODO: requires APPLE_ID / APPLE_TEAM_ID (see Appfile) and a distribution
     # certificate + provisioning profile (match, or manual). Then uncomment:
     # upload_to_testflight(skip_waiting_for_build_processing: true)
@@ -46,7 +46,7 @@ platform :ios do
   desc "Build a prod release and upload it to App Store Connect"
   lane :prod do
     ENV["ENVFILE"] = ".env.prod"
-    build_app(scheme: "Splitkaro", export_method: "app-store")
+    build_app(scheme: "DividSplit", export_method: "app-store")
     # TODO: same signing prerequisites as staging, plus filled-in App Store
     # metadata/screenshots (or pass skip_metadata/skip_screenshots). Then:
     # upload_to_app_store(skip_metadata: true, skip_screenshots: true)

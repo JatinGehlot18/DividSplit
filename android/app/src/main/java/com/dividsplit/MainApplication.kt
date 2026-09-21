@@ -1,4 +1,4 @@
-package com.splitkaro
+package com.dividsplit
 
 import android.app.Application
 import com.facebook.react.PackageList

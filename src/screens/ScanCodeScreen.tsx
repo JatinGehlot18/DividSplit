@@ -9,10 +9,10 @@ import { AppText, Avatar, Header, Screen } from '../components/primitives';
 import { useNavigation } from '../nav/navigation';
 import { useTheme } from '../theme/ThemeContext';
 
-const CODE_PREFIX = 'splitkaro:friend:';
+const CODE_PREFIX = 'dividsplit:friend:';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Accepts either our own `splitkaro:friend:<email>` code or a bare email. */
+/** Accepts either our own `dividsplit:friend:<email>` code or a bare email. */
 function parseCode(raw: string): string | null {
   const trimmed = raw.trim();
   const email = trimmed.startsWith(CODE_PREFIX) ? trimmed.slice(CODE_PREFIX.length) : trimmed;
@@ -59,7 +59,7 @@ export default function ScanCodeScreen() {
   }
 
   function shareCode() {
-    Share.share({ message: `Add me on Splitkaro! My email is ${user?.email ?? ''}` });
+    Share.share({ message: `Add me on DividSplit! My email is ${user?.email ?? ''}` });
   }
 
   function copyCode() {
@@ -96,7 +96,7 @@ export default function ScanCodeScreen() {
             <QRCode value={myCode} size={200} />
           </View>
           <AppText size={12} weight="600" color={theme.textFaint} style={{ marginTop: 16, textAlign: 'center' }}>
-            Anyone can scan this to add you on Splitkaro
+            Anyone can scan this to add you on DividSplit
           </AppText>
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 28, width: '100%' }}>

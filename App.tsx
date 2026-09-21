@@ -1,5 +1,5 @@
 /**
- * Splitkaro — split shared expenses with flatmates & friends.
+ * DividSplit — split shared expenses with flatmates & friends.
  *
  * Navigation is react-navigation (native-stack + a nested bottom-tabs
  * navigator for the four top-level sections). All data and auth come from

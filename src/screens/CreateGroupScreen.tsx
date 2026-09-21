@@ -93,7 +93,7 @@ export default function CreateGroupScreen() {
 
   async function shareWhatsApp() {
     withInviteLink(async link => {
-      const message = `Join my group on Splitkaro! ${link}`;
+      const message = `Join my group on DividSplit! ${link}`;
       try {
         await Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
       } catch {

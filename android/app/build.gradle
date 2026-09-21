@@ -78,9 +78,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.splitkaro"
+    namespace "com.dividsplit"
     defaultConfig {
-        applicationId "com.splitkaro"
+        applicationId "com.dividsplit"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI overrides these with -PversionCode=<run number> -PversionName=<git tag>; local builds keep the defaults.

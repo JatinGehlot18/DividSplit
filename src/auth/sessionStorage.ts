@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../api/types';
 
-const SESSION_KEY = '@splitkaro/session';
+const SESSION_KEY = '@dividsplit/session';
 
 export type PersistedSession = {
   accessToken: string;

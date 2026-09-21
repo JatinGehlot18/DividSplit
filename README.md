@@ -53,7 +53,7 @@ light/dark theming, and a clean, mockup-accurate UI.
 
 ## 🧾 About
 
-Splitkaro is a **Splitwise-style expense splitter**, built as a React Native
+DividSplit is a **Splitwise-style expense splitter**, built as a React Native
 client on top of a real backend that exposes **both REST and GraphQL**. Sign
 in, create a group, add an expense, split it equally or unevenly, and see
 exactly who owes whom — with one-tap suggestions for settling up.
@@ -125,7 +125,7 @@ unevenly · Expense detail · Settle up · Search · Profile.
 ### Prerequisites
 
 - Node.js ≥ 22.11
-- A running Splitkaro backend exposing REST auth on `/api/auth/*` and
+- A running DividSplit backend exposing REST auth on `/api/auth/*` and
   GraphQL on `/graphql`, on port `4000`
 
 ### API host per platform

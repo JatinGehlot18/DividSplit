@@ -1,6 +1,6 @@
 import { AppConfig } from '../config';
 
-/** Base URL for the SplitKaro backend (REST under /api, GraphQL at /graphql), set per-env in .env.* — see src/config. */
+/** Base URL for the DividSplit backend (REST under /api, GraphQL at /graphql), set per-env in .env.* — see src/config. */
 export const API_BASE_URL = AppConfig.apiUrl;
 
 type SpringError = { message?: string; error?: string };

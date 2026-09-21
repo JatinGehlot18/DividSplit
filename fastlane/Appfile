@@ -1,8 +1,8 @@
-app_identifier("com.splitkaro") # Android applicationId. iOS bundle id is still the RN template default — set PRODUCT_BUNDLE_IDENTIFIER in Xcode before shipping to the App Store.
+app_identifier("com.dividsplit") # Android applicationId. iOS bundle id matches — set PRODUCT_BUNDLE_IDENTIFIER in Xcode before shipping to the App Store.
 apple_id(ENV["APPLE_ID"]) # set in CI env / your shell profile, not committed
 team_id(ENV["APPLE_TEAM_ID"])
 
 for_platform :android do
   json_key_file(ENV["PLAY_STORE_JSON_KEY"]) # Play Console service-account key, path only — never commit the key itself
-  package_name("com.splitkaro")
+  package_name("com.dividsplit")
 end

@@ -126,13 +126,13 @@ export default function AccountScreen() {
 
       <SectionLabel>Feedback</SectionLabel>
       <View style={{ marginBottom: 26 }}>
-        <Row icon="💬" label="Contact support" onPress={() => Linking.openURL('mailto:support@splitkaro.app')} />
+        <Row icon="💬" label="Contact support" onPress={() => Linking.openURL('mailto:support@dividsplit.com')} />
       </View>
 
       <Row icon="↪" label="Log out" color={theme.coral} onPress={logOut} />
 
       <AppText size={11} weight="600" color={theme.textFaint} style={{ textAlign: 'center', marginTop: 40 }}>
-        Splitkaro · built with React Native
+        DividSplit · built with React Native
       </AppText>
 
       <Modal visible={pwOpen} animationType="slide" transparent onRequestClose={() => setPwOpen(false)}>
