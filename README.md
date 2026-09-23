@@ -1,6 +1,6 @@
 <div align="center">
 
-# 💸 Splitkaro
+# 💸 DividSplit
 
 **Split bills, not friendships.**
 
