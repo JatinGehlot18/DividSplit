@@ -8,7 +8,8 @@ type Env = 'dev' | 'staging' | 'prod';
 const LOCAL_API_URL = `http://${Platform.OS === 'android' ? '10.0.2.2' : 'localhost'}:4000`;
 
 function assertEnv(value: string | undefined): Env {
-  if (value === 'dev' || value === 'staging' || value === 'prod') return value;
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === 'dev' || normalized === 'staging' || normalized === 'prod') return normalized;
   throw new Error(`Invalid or missing ENV (got "${value}"). Run with ENVFILE=.env.dev|.env.staging|.env.prod.`);
 }
 
